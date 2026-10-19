@@ -75,11 +75,31 @@ git plugins.
 `OMP_NOTIFY_SOCKET`, refuses a working directory under `/mnt/c`, and enters a
 private mount namespace that masks `/mnt/c` and `/run/WSL`.
 
-Put `<repo>/bin` on `PATH` **before** the mise/nono entry, for example by
-adding it to your shell profile, or symlink it:
+`omp plugin install` does not put the launcher on `PATH`. Link it yourself from
+the installed plugin (requires `jq`):
 
 ```sh
-ln -sfn "$PWD/bin/nono" ~/.local/bin/nono
+plugin_root=$(omp plugin list --json | jq -r '.npm[] | select(.name=="omp-wsl-notify") | .path')
+ln -sfn "$plugin_root/bin/nono" ~/.local/bin/nono
+```
+
+From a git checkout, link `$PWD/bin/nono` instead; the resolved directory must
+contain `notify-bridge.ts`.
+
+Use a symlink, never a copy. The launcher resolves its own real path with
+`readlink -f "$0"` and runs `notify-bridge.ts` from that directory, so a copy
+has no sibling bridge and silently starts no notifier.
+
+`~/.local/bin` must precede the mise shims. `mise activate` prepends its shims,
+so re-prepend `~/.local/bin` (or the checkout's `bin`) **after** activation;
+setting `PATH` before activation is not enough. Shell init does not cover
+non-interactive launches such as systemd or editor tasks.
+
+Verify:
+
+```sh
+command -v nono   # must print the symlink path, not a mise install
+nono --version
 ```
 
 Invoking the mise-managed `nono` binary directly bypasses the mount mask and
