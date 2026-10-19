@@ -91,16 +91,31 @@ Use a symlink, never a copy. The launcher resolves its own real path with
 has no sibling bridge and silently starts no notifier.
 
 `~/.local/bin` must precede the mise shims. `mise activate` prepends its shims,
-so re-prepend `~/.local/bin` (or the checkout's `bin`) **after** activation;
-setting `PATH` before activation is not enough. Shell init does not cover
-non-interactive launches such as systemd or editor tasks.
+and its shell hooks re-prepend tool installs on every prompt and directory
+change, so a one-time `PATH` edit is overwritten. Re-prepend `~/.local/bin` (or
+the checkout's `bin`) **after** activation, or use the function below. Shell
+init does not cover non-interactive launches such as systemd or editor tasks.
+
+Bash users can make PATH order irrelevant by defining a function after mise
+activation. This works in zsh too:
+
+```bash
+nono() { "$HOME/.local/bin/nono" "$@"; }
+```
+
+The function bypasses PATH lookup for interactive commands. `command nono`
+reaches the real mise-managed binary when needed. Keep the symlink for scripts,
+which do not inherit shell functions.
 
 Verify:
 
 ```sh
-command -v nono   # must print the symlink path, not a mise install
+command -v nono   # symlink path, or "nono" when using the function
 nono --version
 ```
+
+With the zsh function, `command -v` reports the function; `whence -p nono`
+prints the external launcher path.
 
 Invoking the mise-managed `nono` binary directly bypasses the mount mask and
 the bridge.
