@@ -54,15 +54,16 @@ or nono variants may work but are not tested.
 ## Install
 
 ```sh
-omp plugin install git:github.com/hy2k/omp-wsl-notify
+omp plugin install github:hy2k/omp-wsl-notify
 ```
 
 Then restart omp. Ambient extension discovery runs once at startup, and
 `/reload-plugins` does not rescan the extension tree.
 
-`github:hy2k/omp-wsl-notify` is equivalent. The bare form
-`git:hy2k/omp-wsl-notify` is rejected by omp 18.12.2
-(`Error: Invalid package name: ...`); use the full form above.
+The bare form `git:hy2k/omp-wsl-notify` is rejected by omp 18.12.2
+(`Error: Invalid package name: ...`), and
+`git:github.com/hy2k/omp-wsl-notify` fails during install in bun 1.4.2, which
+parses it as host `git`. Use the `github:` form above.
 
 The plugin has no runtime dependencies. Its `@oh-my-pi/pi-coding-agent` import
 is type-only because `omp plugin install` does not install devDependencies for
