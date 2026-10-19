@@ -1,0 +1,90 @@
+#!/bin/sh
+# Launch nono with WSL's Windows filesystem mounts hidden from the sandbox.
+#
+# Landlock cannot enforce rules on 9P: a PathBeneath rule under /mnt/c is
+# accepted but has no effect on the WSL driver. A private mount namespace is the
+# enforcement point instead. /mnt/c is covered with an unreadable tmpfs and
+# /run/WSL is covered so the sandbox cannot reach the Windows interop socket.
+#
+# The toast bridge must run outside that namespace, so it starts before
+# unshare. The sandboxed extension only sees the bridge's native Unix socket.
+#
+# This wrapper is the documented launch path (`nono` from the user's PATH
+# entry). Invoking the mise-managed binary directly bypasses the mask.
+set -eu
+
+wrapper=$(readlink -f -- "$0" 2>/dev/null || printf '%s\n' "$0")
+wrapper_dir=$(dirname -- "$wrapper")
+notify_bridge=$wrapper_dir/notify-bridge.ts
+
+real_nono=
+old_ifs=$IFS
+IFS=:
+for dir in ${PATH:-}; do
+    [ -n "$dir" ] || dir=.
+    candidate=$dir/nono
+    [ -x "$candidate" ] || continue
+    candidate_real=$(readlink -f -- "$candidate" 2>/dev/null || printf '%s\n' "$candidate")
+    [ "$candidate_real" = "$wrapper" ] && continue
+    real_nono=$candidate
+    break
+done
+IFS=$old_ifs
+
+if [ -z "$real_nono" ]; then
+    echo "nono wrapper: cannot find the real nono binary on PATH" >&2
+    exit 127
+fi
+
+# Only `nono run` creates a sandbox. Everything else (profile inspection,
+# attach, ps, ...) passes through unchanged.
+if [ "${1-}" != run ]; then
+    exec "$real_nono" "$@"
+fi
+
+# A cwd below a mount that the mask covers keeps a live 9P reference through
+# the process working directory. Refuse instead of running with a leak.
+cwd=$(pwd -P)
+case "$cwd/" in
+/mnt/c/*)
+    echo "nono wrapper: refusing to start with a working directory under /mnt/c" >&2
+    exit 1
+    ;;
+esac
+
+notify_socket=${OMP_NOTIFY_SOCKET:-${HOME:?HOME is not set}/.cache/omp/notify/notify.sock}
+notify_dir=${notify_socket%/*}
+if [ -f "$notify_bridge" ] && command -v bun >/dev/null 2>&1; then
+    mkdir -p -- "$notify_dir" 2>/dev/null || true
+    chmod 700 -- "$notify_dir" 2>/dev/null || true
+    if command -v setsid >/dev/null 2>&1; then
+        OMP_NOTIFY_SOCKET="$notify_socket" setsid bun "$notify_bridge" --socket "$notify_socket" \
+            >/dev/null 2>&1 </dev/null &
+    else
+        OMP_NOTIFY_SOCKET="$notify_socket" bun "$notify_bridge" --socket "$notify_socket" \
+            >/dev/null 2>&1 </dev/null &
+    fi
+    # Give the bridge a moment to bind or replace a stale socket before nono
+    # starts. An existing live bridge makes the extra startup a no-op.
+    sleep 0.1
+    waited=0
+    while [ ! -S "$notify_socket" ] && [ "$waited" -lt 40 ]; do
+        waited=$((waited + 1))
+        sleep 0.05
+    done
+fi
+export OMP_NOTIFY_SOCKET="$notify_socket"
+
+# -U creates an unprivileged user namespace, -r maps the caller to root inside
+# it (and therefore grants CAP_SYS_ADMIN over the new mount namespace), -m
+# unshares mounts, and --propagation private keeps the mask local.
+exec unshare -Urm --propagation private /bin/sh -c '
+    set -eu
+    if [ -e /mnt/c ]; then
+        mount -t tmpfs -o size=1m,mode=000 tmpfs /mnt/c
+    fi
+    if [ -d /run/WSL ]; then
+        mount -t tmpfs -o size=1m,mode=000 tmpfs /run/WSL
+    fi
+    exec "$@"
+' sh "$real_nono" "$@"
