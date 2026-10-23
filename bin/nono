@@ -58,10 +58,10 @@ if [ -f "$notify_bridge" ] && command -v bun >/dev/null 2>&1; then
     mkdir -p -- "$notify_dir" 2>/dev/null || true
     chmod 700 -- "$notify_dir" 2>/dev/null || true
     if command -v setsid >/dev/null 2>&1; then
-        OMP_NOTIFY_SOCKET="$notify_socket" setsid bun "$notify_bridge" --socket "$notify_socket" \
+        OMP_NOTIFY_SOCKET="$notify_socket" setsid bun "$notify_bridge" --socket "$notify_socket" --parent-pid "$$" \
             >/dev/null 2>&1 </dev/null &
     else
-        OMP_NOTIFY_SOCKET="$notify_socket" bun "$notify_bridge" --socket "$notify_socket" \
+        OMP_NOTIFY_SOCKET="$notify_socket" bun "$notify_bridge" --socket "$notify_socket" --parent-pid "$$" \
             >/dev/null 2>&1 </dev/null &
     fi
     # Give the bridge a moment to bind or replace a stale socket before nono

@@ -19,7 +19,11 @@ import { dirname } from "node:path";
 import { ALLOWED_TAGS, resolveAumid, toastScript } from "../lib/toast";
 
 const MAX_BYTES = 64 * 1024;
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_WATCHDOG_MS = 30_000;
+// Test-only override so the committed lifetime test runs the same code path in
+// ~100 ms instead of 30 s.
+const WATCHDOG_ENV_MS = Number(process.env.OMP_NOTIFY_WATCHDOG_MS);
+const WATCHDOG_MS = Number.isFinite(WATCHDOG_ENV_MS) && WATCHDOG_ENV_MS > 0 ? WATCHDOG_ENV_MS : DEFAULT_WATCHDOG_MS;
 const CONNECTION_TIMEOUT_MS = 5_000;
 
 /**
@@ -44,7 +48,7 @@ interface BridgePayload {
 }
 
 let server: Server | undefined;
-let idleTimer: NodeJS.Timeout | undefined;
+let watchdog: NodeJS.Timeout | undefined;
 const clients = new Set<Socket>();
 
 function parseSocketPath(): string {
@@ -57,13 +61,31 @@ function parseSocketPath(): string {
 	return value;
 }
 
-function resetIdle(): void {
-	clearTimeout(idleTimer);
-	idleTimer = setTimeout(shutdown, IDLE_TIMEOUT_MS);
+function parseParentPid(): number {
+	const flag = process.argv.indexOf("--parent-pid");
+	const value = flag === -1 ? undefined : process.argv[flag + 1];
+	const pid = value === undefined ? Number.NaN : Number(value);
+	// Number("") is 0 and process.kill(0, 0) signals the bridge's own process
+	// group, so a missing or empty argument must not reach the poll loop.
+	if (!Number.isInteger(pid) || pid <= 0) {
+		console.error("notify-bridge: --parent-pid <pid> is required");
+		process.exit(2);
+	}
+	return pid;
+}
+
+function startWatchdog(parentPid: number): void {
+	watchdog = setInterval(() => {
+		try {
+			process.kill(parentPid, 0);
+		} catch {
+			shutdown();
+		}
+	}, WATCHDOG_MS);
 }
 
 function shutdown(): void {
-	clearTimeout(idleTimer);
+	clearInterval(watchdog);
 	for (const client of clients) client.destroy();
 	clients.clear();
 	if (!server) {
@@ -111,7 +133,6 @@ function showToast(message: ToastMessage): void {
 }
 
 function onConnection(socket: Socket): void {
-	resetIdle();
 	clients.add(socket);
 	socket.setTimeout(CONNECTION_TIMEOUT_MS, () => socket.destroy());
 	socket.on("close", () => clients.delete(socket));
@@ -174,12 +195,12 @@ function listen(socketPath: string): void {
 		} catch {
 			// The directory permission is the primary boundary.
 		}
-		resetIdle();
 	});
 }
 
 function main(): void {
 	const socketPath = parseSocketPath();
+	const parentPid = parseParentPid();
 	mkdirSync(dirname(socketPath), { recursive: true, mode: 0o700 });
 	try {
 		chmodSync(dirname(socketPath), 0o700);
@@ -189,6 +210,7 @@ function main(): void {
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
 	listen(socketPath);
+	startWatchdog(parentPid);
 }
 
 if (import.meta.main) main();
