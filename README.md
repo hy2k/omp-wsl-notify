@@ -37,6 +37,25 @@ paths.
 A direct `/init` fallback exists for an unsandboxed WSL session. It is
 **untested and unsupported**; see [Tested environment](#tested-environment).
 
+### Bridge lifetime and sockets
+
+The bridge lives exactly as long as its launcher. `bin/nono` passes
+`--parent-pid "$$"` and the bridge polls that PID every 30 s; when the launcher
+is gone the bridge shuts down and its socket file goes with it. There is no idle
+timer, so a long session keeps notifying. Starting the bridge by hand without
+`--parent-pid` exits 2.
+
+Each launcher binds `notify-<launcher-pid>.sock`, so concurrent sessions never
+share a bridge and no session goes mute when another one exits.
+
+A hard kill (SIGKILL, OOM) leaves the socket file behind with no owner. That is
+recovered automatically: a later launcher that reuses the PID hits
+`EADDRINUSE`, probes the socket, finds it dead, unlinks it and rebinds, so
+leftover files do not accumulate. To sweep them by hand, stop every omp session
+first, confirm `pgrep -af notify-bridge` prints nothing, then
+`rm -f "$HOME/.cache/omp/notify"/notify-*.sock`. Deleting a live session's
+socket silences that session until its next `nono run`.
+
 ### Borrowed AppUserModelID
 
 WinRT silently drops a toast whose AppUserModelID has no Start-menu
@@ -162,6 +181,7 @@ to the caller.
 ```sh
 bun install
 bun run typecheck
+bun test
 bun build ./index.ts --target=bun
 ```
 

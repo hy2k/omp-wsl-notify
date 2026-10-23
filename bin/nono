@@ -57,7 +57,11 @@ notify_dir=${notify_socket%/*}
 if [ -f "$notify_bridge" ] && command -v bun >/dev/null 2>&1; then
     mkdir -p -- "$notify_dir" 2>/dev/null || true
     chmod 700 -- "$notify_dir" 2>/dev/null || true
+    # The bridge watches this wrapper's PID and exits once the session ends.
     if command -v setsid >/dev/null 2>&1; then
+        # setsid plus /dev/null stdio keep the bridge off every terminal, so
+        # `ps -a` (terminal-bound processes, session leaders excluded) never
+        # lists it; use `pgrep -af notify-bridge` instead.
         OMP_NOTIFY_SOCKET="$notify_socket" setsid bun "$notify_bridge" --socket "$notify_socket" --parent-pid "$$" \
             >/dev/null 2>&1 </dev/null &
     else
