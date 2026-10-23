@@ -133,7 +133,8 @@ Grant the bridge socket directory in your nono profile:
 ## Environment
 
 - `OMP_NOTIFY_SOCKET` — bridge socket path. Defaults to
-  `$HOME/.cache/omp/notify/notify.sock`; the launcher exports it.
+  `$HOME/.cache/omp/notify/notify-<launcher-pid>.sock`, so concurrent sessions
+  do not share a bridge; the launcher exports it.
 - `OMP_WSL_TOAST_AUMID` — optional AppUserModelID override.
 - `PI_NOTIFICATIONS=off` (or `0`, `false`) — suppresses notifications, matching
   omp's own semantics.

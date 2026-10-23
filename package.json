@@ -1,6 +1,6 @@
 {
   "name": "omp-wsl-notify",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Windows toast notifications for oh-my-pi under WSL",
   "omp": { "extensions": ["./index.ts"] },
