@@ -52,7 +52,7 @@ case "$cwd/" in
     ;;
 esac
 
-notify_socket=${OMP_NOTIFY_SOCKET:-${HOME:?HOME is not set}/.cache/omp/notify/notify.sock}
+notify_socket=${OMP_NOTIFY_SOCKET:-${HOME:?HOME is not set}/.cache/omp/notify/notify-$$.sock}
 notify_dir=${notify_socket%/*}
 if [ -f "$notify_bridge" ] && command -v bun >/dev/null 2>&1; then
     mkdir -p -- "$notify_dir" 2>/dev/null || true
