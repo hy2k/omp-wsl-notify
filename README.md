@@ -1,7 +1,8 @@
 # omp-wsl-notify
 
-Windows toast notifications for oh-my-pi (`omp`) sessions running under WSL2,
-including omp started over SSH and inside the nono sandbox.
+Windows toast notifications for oh-my-pi (`omp`) sessions running under WSL2:
+sandboxed through `bin/nono`, unsandboxed over SSH, and unsandboxed in a local
+session launched from Windows with `wsl.exe`.
 
 This is an **oh-my-pi (`omp`) extension only**. It is not a `pi` extension and
 does not claim `pi` compatibility; `package.json` declares only `omp`.
@@ -21,7 +22,7 @@ The toast title is the omp session title. Nerd Font glyphs are stripped from
 that title because omp session titles use them; that behavior is
 OMP-specific, not a generic text filter.
 
-## Why a bridge
+## Sandboxed and unsandboxed paths
 
 Under nono the sandbox hides `/mnt/c` and `/run/WSL`, so the sandboxed process
 cannot call Windows interop directly: `powershell.exe` is not resolvable and
@@ -29,13 +30,19 @@ cannot call Windows interop directly: `powershell.exe` is not resolvable and
 bridge **outside** the sandbox and exports `OMP_NOTIFY_SOCKET`; the extension
 posts toast payloads to that native Unix socket instead.
 
-A simpler unsandboxed WSL notifier can call `powershell.exe` directly and may
-need neither the Unix socket nor the bridge. This repository exists for the
-nono case, and the bridge is part of it because nono hides the Windows interop
-paths.
+Without a sandbox the extension needs neither the Unix socket nor the bridge: it
+reaches Windows interop itself. If `OMP_NOTIFY_SOCKET` is set but its socket is
+gone, the extension falls back to that direct path, so an unsandboxed `omp`
+still notifies.
 
-A direct `/init` fallback exists for an unsandboxed WSL session. It is
-**untested and unsupported**; see [Tested environment](#tested-environment).
+The direct path prefers `/init` and names an interop socket explicitly instead
+of executing the `powershell.exe` PE, because the extension does not rely on
+the kernel being able to exec a PE on the 9P `/mnt/c` mount; `/init` asks
+Windows to open it. It uses `WSL_INTEROP` when the environment provides one and
+otherwise falls back to the stable `/run/WSL/1_interop`, which covers sessions
+whose parent chain `/init` cannot read. Without the binfmt marker it spawns
+`powershell.exe` from `PATH` instead. Either branch works with no bridge and no
+launcher.
 
 ### Bridge lifetime and sockets
 
@@ -56,7 +63,7 @@ first, confirm `pgrep -af notify-bridge` prints nothing, then
 `rm -f "$HOME/.cache/omp/notify"/notify-*.sock`. Deleting a live session's
 socket silences that session until its next `nono run`.
 
-### Borrowed AppUserModelID
+## Borrowed AppUserModelID
 
 WinRT silently drops a toast whose AppUserModelID has no Start-menu
 registration. Instead of inventing one, `toastScript` borrows Windows
@@ -66,9 +73,11 @@ override it on hosts where that identity is unavailable.
 ## Tested environment
 
 - `omp` under nono on WSL2, including SSH into WSL and starting `omp` there.
+- `omp` on WSL2 with no sandbox, using the direct interop path (no bridge, no
+  `bin/nono`). Toasts arrive both over SSH and in a local session launched from
+  Windows with `wsl.exe` (no SSH).
 
-The direct unsandboxed `/init` fallback is untested and unsupported. Other WSL
-or nono variants may work but are not tested.
+Other WSL or nono variants may work but are not tested.
 
 ## Install
 
@@ -89,6 +98,8 @@ is type-only because `omp plugin install` does not install devDependencies for
 git plugins.
 
 ## Launcher
+
+Only the sandboxed path needs this. An unsandboxed `omp` notifies without it.
 
 `bin/nono` wraps the real `nono`: it starts the toast bridge, exports
 `OMP_NOTIFY_SOCKET`, refuses a working directory under `/mnt/c`, and enters a
@@ -139,7 +150,7 @@ prints the external launcher path.
 Invoking the mise-managed `nono` binary directly bypasses the mount mask and
 the bridge.
 
-## nono profile
+## nono profile (sandboxed sessions only)
 
 Grant the bridge socket directory in your nono profile:
 
@@ -151,9 +162,10 @@ Grant the bridge socket directory in your nono profile:
 
 ## Environment
 
-- `OMP_NOTIFY_SOCKET` — bridge socket path. Defaults to
+- `OMP_NOTIFY_SOCKET` — bridge socket path. The launcher exports
   `$HOME/.cache/omp/notify/notify-<launcher-pid>.sock`, so concurrent sessions
-  do not share a bridge; the launcher exports it.
+  do not share a bridge. Unset, the extension tries
+  `$HOME/.cache/omp/notify/notify.sock` and otherwise uses the direct path.
 - `OMP_WSL_TOAST_AUMID` — optional AppUserModelID override.
 - `PI_NOTIFICATIONS=off` (or `0`, `false`) — suppresses notifications, matching
   omp's own semantics.
@@ -161,8 +173,9 @@ Grant the bridge socket directory in your nono profile:
 ## Prerequisites
 
 - WSL2
-- Bun (runs the extension and the bridge)
-- nono 0.80+
+- Bun (runs the extension, and the bridge when sandboxed)
+- nono 0.80+ — only for sandboxed sessions; an unsandboxed `omp` needs no nono
+  and no bridge
 - `powershell.exe` at
   `/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe`
 - Toast notifications enabled in Windows

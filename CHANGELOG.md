@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Documented that an unsandboxed `omp` notifies through the direct Windows
+  interop path. That path was previously described as untested and unsupported;
+  it is now tested, and no bridge or launcher is needed for it.
+
 ## 0.1.1 — 2026-10-23
 
 ### Fixed
