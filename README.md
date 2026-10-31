@@ -7,11 +7,32 @@ session launched from Windows with `wsl.exe`.
 This is an **oh-my-pi (`omp`) extension only**. It is not a `pi` extension and
 does not claim `pi` compatibility; `package.json` declares only `omp`.
 
+## Do you need this?
+
+- **Tern:** no, provided Tern's "Needs attention" and "Tern finished" settings
+  are both enabled. With both on, Tern renders omp's OSC 99 turn-end
+  notification as a real Windows toast by itself, unfocused included. Either
+  setting alone is not enough; both must be on.
+- **A terminal that does not surface omp notifications as Windows toasts:**
+  yes. This is the case the plugin was written for.
+- **Anything else:** test it. Run a turn, switch focus away from the terminal,
+  and see whether a Windows toast appears. Only Tern is verified. No other
+  terminal was tried, and a terminal that draws notifications only inside its
+  own window still needs this plugin.
+
+The plugin posts its own toast on `agent_end` regardless of terminal, so
+running it next to a terminal that already notifies is expected to give you one
+Windows toast per event, twice. That duplicate is expected from the two
+independent notifiers, not separately measured. `PI_NOTIFICATIONS=off`
+disables both at once: omp suppresses its own notification, and the plugin
+mirrors that setting.
+
 ## What it does
 
-omp normally leaves desktop notifications to the terminal. Tern draws omp's
-OSC 99 notifications inside its own window, so nothing surfaces while that
-window is unfocused, and omp has no Windows notification path of its own.
+omp normally leaves desktop notifications to the terminal. Terminals that do
+not surface omp's OSC 99 notifications as Windows toasts draw them only inside
+their own window, so nothing appears while that window is unfocused, and omp has
+no Windows notification path of its own.
 
 This plugin posts a Windows toast when:
 
@@ -149,6 +170,84 @@ prints the external launcher path.
 
 Invoking the mise-managed `nono` binary directly bypasses the mount mask and
 the bridge.
+
+## Uninstall
+
+This removes everything the plugin writes. It writes only user state: its own
+package under the omp plugin directory, a bridge socket under
+`~/.cache/omp/notify/`, and whatever `PATH` link or shell function you created
+by hand. Nothing else on the machine belongs to it.
+
+1. Uninstall the plugin itself:
+
+   ```sh
+   omp plugin uninstall omp-wsl-notify
+   ```
+
+   Verify it is gone from the plugin list:
+
+   ```sh
+   omp plugin list --json | jq -r '.npm[].name'   # no omp-wsl-notify line
+   ```
+
+   The CLI also removes the entry from the plugin `package.json` and its
+   lockfile. Do not hand-edit those files; the CLI owns them.
+
+2. Remove the launcher, if you created one. First check what the `nono` you run
+   actually resolves to:
+
+   ```sh
+   readlink -f "$HOME/.local/bin/nono"
+   ```
+
+   Delete `~/.local/bin/nono` **only** if that path is inside this plugin's
+   installed directory (the `plugin_root` from the Launcher section above). If
+   you added the `nono() { ... }` shell function instead, there is no symlink to
+   delete; remove that function from your shell init file.
+
+   Verify `nono` resolves to the real sandbox binary again:
+
+   ```sh
+   command -v nono      # the mise-managed nono
+   nono --version
+   ```
+
+   `~/.local/bin` may hold unrelated links. Never delete the directory itself.
+
+3. Restart omp. Extensions are discovered once at startup, and
+   `/reload-plugins` does not rescan the extension tree, so the plugin keeps
+   running until omp restarts.
+
+4. After every omp session has exited, check for a bridge that outlived its
+   launcher and remove the socket directory:
+
+   ```sh
+   pgrep -af notify-bridge                       # expect no output
+   rm -rf "$HOME/.cache/omp/notify"
+   ```
+
+   A hard-killed session (SIGKILL, OOM) leaves a socket file with no owner.
+   That socket is inert, but it accumulates. Removing the `notify/`
+   subdirectory is enough; never remove all of `~/.cache/omp`, which also holds
+   omp's own state.
+
+5. Remove the nono profile grant added for sandboxed sessions, since nothing
+   listens there any more:
+
+   ```jsonc
+   "filesystem": {
+     "unix_socket_dir": ["$HOME/.cache/omp/notify"]
+   }
+   ```
+
+   If you also set `linux.sandbox_policy: "landlock"` solely to keep AF_VSOCK
+   available for the bridge, revert that setting too: the plugin no longer
+   needs it.
+
+6. Nothing else needs removing. Windows keeps the notification history of the
+   toasts already posted under the borrowed AppUserModelID; that history is
+   Windows' own and harmless. Once the socket grant is gone, a sandboxed
+   profile has no trace of the plugin.
 
 ## nono profile (sandboxed sessions only)
 

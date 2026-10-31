@@ -7,6 +7,14 @@
 - Documented that an unsandboxed `omp` notifies through the direct Windows
   interop path. That path was previously described as untested and unsupported;
   it is now tested, and no bridge or launcher is needed for it.
+- Corrected the Tern claim. Tern renders omp's OSC 99 turn-end notification
+  as a real Windows toast itself, unfocused included, when its "Needs
+  attention" and "Tern finished" settings are both enabled, so the plugin is
+  optional for Tern. It remains the supported path for terminals that do not
+  surface omp notifications as Windows toasts. The README now states that
+  running both is expected to produce duplicate toasts, and documents how to
+  uninstall the plugin and clean up the launcher, bridge sockets, and nono
+  grant.
 
 ## 0.1.1 — 2026-10-23
 

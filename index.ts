@@ -1,11 +1,16 @@
 /**
  * Windows toast notifications for omp running under WSL.
  *
- * Tern draws omp's OSC 99 notifications inside its own window, so nothing
- * surfaces while that window is unfocused, and omp has no Windows notification
- * path of its own: packages/tui/src/desktop-notify.ts is a freedesktop D-Bus
- * fallback, Linux-only and gated to NotifyProtocol.Bell. WSL interop reaches the
- * Windows notification platform instead, through the powershell.exe on PATH.
+ * A terminal that does not surface omp's OSC 99 notifications as Windows toasts
+ * draws them only inside its own window, so nothing appears while that window
+ * is unfocused, and omp has no Windows notification path of its own:
+ * packages/tui/src/desktop-notify.ts is a freedesktop D-Bus fallback,
+ * Linux-only and gated to NotifyProtocol.Bell. WSL interop reaches the Windows
+ * notification platform instead, through the powershell.exe on PATH. Tern is
+ * not such a terminal: with its "Needs attention" and "Tern finished" settings
+ * both enabled it renders the turn-end notification as a Windows toast itself,
+ * so this module is optional there and remains the path for terminals without
+ * that support.
  *
  * Under nono the sandbox hides /mnt/c and /run/WSL, so powershell.exe is not
  * resolvable and /init is unreachable. The launcher (bin/nono) starts a bridge
